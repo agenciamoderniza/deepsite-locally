@@ -42,8 +42,8 @@ function AskAI({
     const saved = localStorage.getItem('localSettings');
     return saved ? JSON.parse(saved) : {
       apiKey: "",
-      apiUrl: "https://api.novita.ai/v1/chat/completions",
-      model: "deepseek/deepseek-v3-0324",
+      apiUrl: "http://localhost:11434/v1",
+      model: "gemma3:1b",
       openRouterApiKey: "<OPENROUTER_API_KEY>",
       openRouterApiUrl: "https://openrouter.ai/api/v1",
       openRouterModel: "deepseek/deepseek-chat-v3-0324:free",
@@ -58,8 +58,8 @@ function AskAI({
     } else {
       setLocalSettings({
         apiKey: "",
-        apiUrl: "https://api.novita.ai/v1/chat/completions",
-        model: "deepseek/deepseek-v3-0324",
+        apiUrl: "http://localhost:11434/v1",
+        model: "gemma3:1b",
         openRouterApiKey: "<OPENROUTER_API_KEY>",
         openRouterApiUrl: "https://openrouter.ai/api/v1",
         openRouterModel: "deepseek/deepseek-chat-v3-0324:free",
@@ -83,20 +83,7 @@ function AskAI({
     let lastRenderTime = 0;
     try {
       onNewPrompt(prompt);
-      const request = await fetch(localSettings.apiUrl, {
-    method: "POST",
-    body: JSON.stringify({
-      model: localSettings.model,
-      messages: [
-        { role: "system", content: "Você é um gerador de sites." },
-        { role: "user", content: prompt },
-      ],
-    }),
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${localSettings.apiKey}`,
-    },
-
+      const request = await fetch("/api/ask-ai", {
         method: "POST",
         body: JSON.stringify({
           prompt,
