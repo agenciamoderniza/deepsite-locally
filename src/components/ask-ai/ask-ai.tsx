@@ -83,7 +83,20 @@ function AskAI({
     let lastRenderTime = 0;
     try {
       onNewPrompt(prompt);
-      const request = await fetch("/api/ask-ai", {
+      const request = await fetch(localSettings.apiUrl, {
+    method: "POST",
+    body: JSON.stringify({
+      model: localSettings.model,
+      messages: [
+        { role: "system", content: "Você é um gerador de sites." },
+        { role: "user", content: prompt },
+      ],
+    }),
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${localSettings.apiKey}`,
+    },
+
         method: "POST",
         body: JSON.stringify({
           prompt,
