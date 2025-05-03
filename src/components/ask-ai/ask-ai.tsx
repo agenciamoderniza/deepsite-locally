@@ -2,13 +2,14 @@
 import { useEffect, useState } from "react";
 import { RiSparkling2Fill } from "react-icons/ri";
 import { GrSend } from "react-icons/gr";
+import classNames from "classnames";
 import { toast } from "react-toastify";
 import { useLocalStorage } from "react-use";
 import { MdPreview } from "react-icons/md";
 
 import Login from "../login/login";
-import { defaultHTML } from "./../../../utils/consts";
-import SuccessSound from "./../../assets/success.mp3";
+import { defaultHTML } from "../../../utils/consts";
+import SuccessSound from "../../assets/success.mp3";
 import Settings from "../settings/settings";
 import ProModal from "../pro-modal/pro-modal";
 
@@ -42,17 +43,22 @@ function AskAI({
     return saved
       ? JSON.parse(saved)
       : {
-          openRouterApiKey: "",
-          openRouterApiUrl: "https://openrouter.ai/api/v1",
+          openRouterApiKey: "<OPENROUTER_API_KEY>",
+          openRouterApiUrl: "https://openrouter.ai/api/v1/chat/completions",
           openRouterModel: "deepseek/deepseek-chat-v3-0324",
         };
   });
 
-  useEffect(() => {
+  const loadLocalSettings = () => {
     const saved = localStorage.getItem("localSettings");
     if (saved) {
-      setLocalSettings(JSON.parse(saved));
+      const parsed = JSON.parse(saved);
+      setLocalSettings(parsed);
     }
+  };
+
+  useEffect(() => {
+    loadLocalSettings();
   }, []);
 
   const audio = new Audio(SuccessSound);
@@ -68,6 +74,7 @@ function AskAI({
 
     try {
       onNewPrompt(prompt);
+
       const request = await fetch("/api/ask-ai", {
         method: "POST",
         body: JSON.stringify({
@@ -88,27 +95,27 @@ function AskAI({
         },
       });
 
-      if (request && request.body) {
-        if (!request.ok) {
-          const res = await request.json();
-          if (res.openLogin) setOpen(true);
-          else if (res.openSelectProvider) {
-            setOpenProvider(true);
-            setProviderError(res.message);
-          } else if (res.openProModal) setOpenProModal(true);
-          else toast.error(res.message);
+      if (!request.ok && request.body) {
+        const res = await request.json();
+        if (res.openLogin) setOpen(true);
+        else if (res.openSelectProvider) {
+          setOpenProvider(true);
+          setProviderError(res.message);
+        } else if (res.openProModal) setOpenProModal(true);
+        else toast.error(res.message);
 
-          setisAiWorking(false);
-          return;
-        }
+        setisAiWorking(false);
+        return;
+      }
 
+      if (request.body) {
         const reader = request.body.getReader();
         const decoder = new TextDecoder("utf-8");
 
         const read = async () => {
           const { done, value } = await reader.read();
           if (done) {
-            toast.success("AI respondeu com sucesso");
+            toast.success("AI respondeu com sucesso!");
             setPrompt("");
             setPreviousPrompt(prompt);
             setisAiWorking(false);
@@ -117,8 +124,9 @@ function AskAI({
             setView("preview");
 
             const finalDoc = contentResponse.match(/<!DOCTYPE html>[\s\S]*<\/html>/)?.[0];
-            if (finalDoc) setHtml(finalDoc);
-
+            if (finalDoc) {
+              setHtml(finalDoc);
+            }
             return;
           }
 
@@ -128,8 +136,10 @@ function AskAI({
 
           if (newHtml) {
             let partialDoc = newHtml;
-            if (!partialDoc.includes("</html>")) partialDoc += "
+            if (!partialDoc.includes("</html>")) {
+              partialDoc += "
 </html>";
+            }
 
             const now = Date.now();
             if (now - lastRenderTime > 300) {
@@ -137,7 +147,9 @@ function AskAI({
               lastRenderTime = now;
             }
 
-            if (partialDoc.length > 200) onScrollToBottom();
+            if (partialDoc.length > 200) {
+              onScrollToBottom();
+            }
           }
 
           read();
@@ -148,31 +160,27 @@ function AskAI({
     } catch (error: any) {
       setisAiWorking(false);
       toast.error(error.message);
-      if (error.openLogin) setOpen(true);
+      if (error.openLogin) {
+        setOpen(true);
+      }
     }
   };
 
   return (
-    <div className="bg-gray-950 rounded-xl py-2 lg:py-2.5 pl-3.5 lg:pl-4 pr-2 lg:pr-2.5 absolute lg:sticky bottom-3 left-3 lg:bottom-4 lg:left-4 w-[calc(100%-1.5rem)] lg:w-[calc(100%-2rem)] z-10 group">
+    <div className={`bg-gray-950 rounded-xl py-2 lg:py-2.5 pl-3.5 lg:pl-4 pr-2 lg:pr-2.5 absolute lg:sticky bottom-3 left-3 lg:bottom-4 lg:left-4 w-[calc(100%-1.5rem)] lg:w-[calc(100%-2rem)] z-10 group ${isAiWorking ? "animate-pulse" : ""}`}>
       {defaultHTML !== html && (
-        <button
-          className="bg-white lg:hidden -translate-y-[calc(100%+8px)] absolute left-0 top-0 shadow-md text-gray-950 text-xs font-medium py-2 px-3 lg:px-4 rounded-lg flex items-center gap-2 border border-gray-100 hover:brightness-150 transition-all duration-100 cursor-pointer"
-          onClick={() => setView("preview")}
-        >
+        <button className="bg-white lg:hidden -translate-y-[calc(100%+8px)] absolute left-0 top-0 shadow-md text-gray-950 text-xs font-medium py-2 px-3 lg:px-4 rounded-lg flex items-center gap-2 border border-gray-100 hover:brightness-150 transition-all duration-100 cursor-pointer" onClick={() => setView("preview")}>
           <MdPreview className="text-sm" />
-          Ver Preview
+          View Preview
         </button>
       )}
-
       <div className="w-full relative flex items-center justify-between">
-        <RiSparkling2Fill className="text-lg lg:text-xl text-gray-500" />
+        <RiSparkling2Fill className="text-lg lg:text-xl text-gray-500 group-focus-within:text-pink-500" />
         <input
           type="text"
           disabled={isAiWorking}
           className="w-full bg-transparent max-lg:text-sm outline-none px-3 text-white placeholder:text-gray-500 font-code"
-          placeholder={
-            hasAsked ? "O que você quer perguntar agora?" : "Pergunte algo à IA..."
-          }
+          placeholder={hasAsked ? "What do you want to ask AI next?" : "Ask AI anything..."}
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           onKeyDown={(e) => {
@@ -198,31 +206,15 @@ function AskAI({
           </button>
         </div>
       </div>
-
-      <div
-        className={`h-screen w-screen bg-black/20 fixed left-0 top-0 z-10 ${
-          !open ? "opacity-0 pointer-events-none" : ""
-        }`}
-        onClick={() => setOpen(false)}
-      ></div>
-
-      <div
-        className={`absolute top-0 -translate-y-[calc(100%+8px)] right-0 z-10 w-80 bg-white border border-gray-200 rounded-lg shadow-lg transition-all duration-75 overflow-hidden ${
-          !open ? "opacity-0 pointer-events-none" : ""
-        }`}
-      >
+      <div className={classNames("h-screen w-screen bg-black/20 fixed left-0 top-0 z-10", {"opacity-0 pointer-events-none": !open})} onClick={() => setOpen(false)}></div>
+      <div className={classNames("absolute top-0 -translate-y-[calc(100%+8px)] right-0 z-10 w-80 bg-white border border-gray-200 rounded-lg shadow-lg transition-all duration-75 overflow-hidden", {"opacity-0 pointer-events-none": !open})}>
         <Login html={html}>
           <p className="text-gray-500 text-sm mb-3">
-            Você atingiu o limite gratuito. Faça login para continuar.
+            You reached the limit of free AI usage. Please login to continue.
           </p>
         </Login>
       </div>
-
-      <ProModal
-        html={html}
-        open={openProModal}
-        onClose={() => setOpenProModal(false)}
-      />
+      <ProModal html={html} open={openProModal} onClose={() => setOpenProModal(false)} />
     </div>
   );
 }
