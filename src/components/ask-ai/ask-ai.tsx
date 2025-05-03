@@ -2,14 +2,13 @@
 import { useEffect, useState } from "react";
 import { RiSparkling2Fill } from "react-icons/ri";
 import { GrSend } from "react-icons/gr";
-import classNames from "classnames";
 import { toast } from "react-toastify";
 import { useLocalStorage } from "react-use";
 import { MdPreview } from "react-icons/md";
 
 import Login from "../login/login";
-import { defaultHTML } from "../../../utils/consts";
-import SuccessSound from "../../assets/success.mp3";
+import { defaultHTML } from "./../../../utils/consts";
+import SuccessSound from "./../../assets/success.mp3";
 import Settings from "../settings/settings";
 import ProModal from "../pro-modal/pro-modal";
 
@@ -43,21 +42,17 @@ function AskAI({
     return saved
       ? JSON.parse(saved)
       : {
-          apiKey: "",
-          apiUrl: "https://openrouter.ai/api/v1/chat/completions",
-          model: "deepseek/deepseek-chat-v3-0324",
+          openRouterApiKey: "",
+          openRouterApiUrl: "https://openrouter.ai/api/v1",
+          openRouterModel: "deepseek/deepseek-chat-v3-0324",
         };
   });
 
-  const loadLocalSettings = () => {
+  useEffect(() => {
     const saved = localStorage.getItem("localSettings");
     if (saved) {
       setLocalSettings(JSON.parse(saved));
     }
-  };
-
-  useEffect(() => {
-    loadLocalSettings();
   }, []);
 
   const audio = new Audio(SuccessSound);
@@ -65,7 +60,6 @@ function AskAI({
 
   const callAi = async () => {
     if (isAiWorking || !prompt.trim()) return;
-
     setisAiWorking(true);
     setProviderError("");
 
@@ -74,98 +68,83 @@ function AskAI({
 
     try {
       onNewPrompt(prompt);
-
-      const providerConfig: any = {
-        prompt,
-        provider,
-        ...(provider === "local"
-          ? {
-              ApiKey: localSettings.apiKey,
-              ApiUrl: localSettings.apiUrl,
-              Model: localSettings.model,
-            }
-          : {}),
-        ...(provider === "openrouter"
-          ? {
-              ApiKey: localSettings.apiKey,
-              ApiUrl: localSettings.apiUrl,
-              Model: localSettings.model,
-            }
-          : {}),
-        ...(html === defaultHTML ? {} : { html }),
-        ...(previousPrompt ? { previousPrompt } : {}),
-      };
-
       const request = await fetch("/api/ask-ai", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(providerConfig),
+        body: JSON.stringify({
+          prompt,
+          provider,
+          ...(provider === "openrouter"
+            ? {
+                ApiKey: localSettings.openRouterApiKey,
+                ApiUrl: localSettings.openRouterApiUrl,
+                Model: localSettings.openRouterModel,
+              }
+            : {}),
+          ...(html === defaultHTML ? {} : { html }),
+          ...(previousPrompt ? { previousPrompt } : {}),
+        }),
+        headers: {
+          "Content-Type": "application/json",
+        },
       });
 
-      if (!request.ok) {
-        const res = await request.json();
-        if (res.openLogin) return setOpen(true);
-        if (res.openSelectProvider) {
-          setOpenProvider(true);
-          setProviderError(res.message);
-          return;
-        }
-        if (res.openProModal) return setOpenProModal(true);
-        toast.error(res.message);
-        return;
-      }
+      if (request && request.body) {
+        if (!request.ok) {
+          const res = await request.json();
+          if (res.openLogin) setOpen(true);
+          else if (res.openSelectProvider) {
+            setOpenProvider(true);
+            setProviderError(res.message);
+          } else if (res.openProModal) setOpenProModal(true);
+          else toast.error(res.message);
 
-      if (!request.body) return;
-
-      const reader = request.body.getReader();
-      const decoder = new TextDecoder("utf-8");
-
-      const read = async () => {
-        const { done, value } = await reader.read();
-        if (done) {
-          toast.success("AI respondeu com sucesso!");
-          setPrompt("");
-          setPreviousPrompt(prompt);
           setisAiWorking(false);
-          setHasAsked(true);
-          audio.play();
-          setView("preview");
-
-          const finalDoc = contentResponse.match(
-            /<!DOCTYPE html>[\s\S]*<\/html>/
-          )?.[0];
-          if (finalDoc) {
-            setHtml(finalDoc);
-          }
-
           return;
         }
 
-        const chunk = decoder.decode(value, { stream: true });
-        contentResponse += chunk;
+        const reader = request.body.getReader();
+        const decoder = new TextDecoder("utf-8");
 
-        const newHtml = contentResponse.match(/<!DOCTYPE html>[\s\S]*/)?.[0];
-        if (newHtml) {
-          let partialDoc = newHtml;
-          if (!partialDoc.includes("</html>")) {
-            partialDoc += "\n</html>";
+        const read = async () => {
+          const { done, value } = await reader.read();
+          if (done) {
+            toast.success("AI respondeu com sucesso");
+            setPrompt("");
+            setPreviousPrompt(prompt);
+            setisAiWorking(false);
+            setHasAsked(true);
+            audio.play();
+            setView("preview");
+
+            const finalDoc = contentResponse.match(/<!DOCTYPE html>[\s\S]*<\/html>/)?.[0];
+            if (finalDoc) setHtml(finalDoc);
+
+            return;
           }
 
-          const now = Date.now();
-          if (now - lastRenderTime > 300) {
-            setHtml(partialDoc);
-            lastRenderTime = now;
+          const chunk = decoder.decode(value, { stream: true });
+          contentResponse += chunk;
+          const newHtml = contentResponse.match(/<!DOCTYPE html>[\s\S]*/)?.[0];
+
+          if (newHtml) {
+            let partialDoc = newHtml;
+            if (!partialDoc.includes("</html>")) partialDoc += "
+</html>";
+
+            const now = Date.now();
+            if (now - lastRenderTime > 300) {
+              setHtml(partialDoc);
+              lastRenderTime = now;
+            }
+
+            if (partialDoc.length > 200) onScrollToBottom();
           }
 
-          if (partialDoc.length > 200) {
-            onScrollToBottom();
-          }
-        }
+          read();
+        };
 
         read();
-      };
-
-      read();
+      }
     } catch (error: any) {
       setisAiWorking(false);
       toast.error(error.message);
@@ -174,36 +153,33 @@ function AskAI({
   };
 
   return (
-    <div
-      className={`bg-gray-950 rounded-xl py-2 pl-3.5 pr-2 absolute bottom-3 left-3 w-[calc(100%-1.5rem)] z-10 group ${
-        isAiWorking ? "animate-pulse" : ""
-      }`}
-    >
+    <div className="bg-gray-950 rounded-xl py-2 lg:py-2.5 pl-3.5 lg:pl-4 pr-2 lg:pr-2.5 absolute lg:sticky bottom-3 left-3 lg:bottom-4 lg:left-4 w-[calc(100%-1.5rem)] lg:w-[calc(100%-2rem)] z-10 group">
       {defaultHTML !== html && (
         <button
-          className="bg-white lg:hidden absolute -translate-y-[calc(100%+8px)] left-0 top-0 text-xs font-medium py-2 px-3 rounded-lg"
+          className="bg-white lg:hidden -translate-y-[calc(100%+8px)] absolute left-0 top-0 shadow-md text-gray-950 text-xs font-medium py-2 px-3 lg:px-4 rounded-lg flex items-center gap-2 border border-gray-100 hover:brightness-150 transition-all duration-100 cursor-pointer"
           onClick={() => setView("preview")}
         >
           <MdPreview className="text-sm" />
           Ver Preview
         </button>
       )}
-      <div className="w-full flex items-center justify-between">
-        <RiSparkling2Fill className="text-lg text-gray-500" />
+
+      <div className="w-full relative flex items-center justify-between">
+        <RiSparkling2Fill className="text-lg lg:text-xl text-gray-500" />
         <input
           type="text"
           disabled={isAiWorking}
-          className="w-full bg-transparent px-3 text-white placeholder:text-gray-500 font-code outline-none"
+          className="w-full bg-transparent max-lg:text-sm outline-none px-3 text-white placeholder:text-gray-500 font-code"
           placeholder={
-            hasAsked
-              ? "O que mais você quer pedir à IA?"
-              : "Digite aqui sua ideia..."
+            hasAsked ? "O que você quer perguntar agora?" : "Pergunte algo à IA..."
           }
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && callAi()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") callAi();
+          }}
         />
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-end gap-2">
           <Settings
             provider={provider as string}
             onChange={setProvider}
@@ -215,20 +191,33 @@ function AskAI({
           />
           <button
             disabled={isAiWorking}
-            className="rounded-full size-8 bg-pink-500 text-white flex items-center justify-center hover:bg-pink-400 disabled:bg-gray-300"
+            className="relative overflow-hidden cursor-pointer flex-none flex items-center justify-center rounded-full text-sm font-semibold size-8 text-center bg-pink-500 hover:bg-pink-400 text-white shadow-sm dark:shadow-highlight/20 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed disabled:hover:bg-gray-300"
             onClick={callAi}
           >
             <GrSend className="-translate-x-[1px]" />
           </button>
         </div>
       </div>
-      {open && (
-        <div
-          className="h-screen w-screen bg-black/20 fixed left-0 top-0 z-10"
-          onClick={() => setOpen(false)}
-        ></div>
-      )}
-      <Login html={html} />
+
+      <div
+        className={`h-screen w-screen bg-black/20 fixed left-0 top-0 z-10 ${
+          !open ? "opacity-0 pointer-events-none" : ""
+        }`}
+        onClick={() => setOpen(false)}
+      ></div>
+
+      <div
+        className={`absolute top-0 -translate-y-[calc(100%+8px)] right-0 z-10 w-80 bg-white border border-gray-200 rounded-lg shadow-lg transition-all duration-75 overflow-hidden ${
+          !open ? "opacity-0 pointer-events-none" : ""
+        }`}
+      >
+        <Login html={html}>
+          <p className="text-gray-500 text-sm mb-3">
+            Você atingiu o limite gratuito. Faça login para continuar.
+          </p>
+        </Login>
+      </div>
+
       <ProModal
         html={html}
         open={openProModal}
